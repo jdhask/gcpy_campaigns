@@ -11,7 +11,6 @@ import pandas as pd
 import numpy as np 
 import sys
 
-sys.path.insert(0, 'C:\\Users\\jhask\\OneDrive\\Documents\\Research\\Projects\\MIT\\pOrgNO3\\code\\analysis\\gcpy_campaigns\\')
 import write_obspack_inputs as obs
 import write_planeflight_inputs as pln
 
@@ -76,7 +75,7 @@ pln.make_planeflightdat_files(outpath='C:/Users/jhask/Desktop/SENEX3/',
 # Create ObsPack files for the Centreville, Alabama site during SOAS 
 # sampling the model there every hour of the campaign between 6/1/2013 and 7/15/2013.
 
-filenames = obs.ground_make_ObsPack_Input_netcdfs('SOAS-Ground', lat=32.903281, 
+filenames = obs.write_obsPack_input_ground('SOAS-Ground', lat=32.903281, 
                                       lon=-87.249942, alt=2,
                                       datestart='20130601 00:00:00',
                                       dateend='20130715 00:00:00', 
@@ -105,7 +104,7 @@ sen =  xr.Dataset({'alt':xr.DataArray( data= alt , dims=['obs']),
 time= pd.to_datetime(sen.time.values).to_series().reset_index(drop=True)
 
 # Now make ObsPack files for all flights: 
-filenames = obs.flight_make_ObsPack_Input_netcdfs('SENEX',lat=sen.lat.values, 
+filenames = obs.write_obspack_inputs_flights('SENEX',lat=sen.lat.values, 
                                                   lon=sen.lon.values,
                                                   alt=sen.alt.values,
                                                   time=time, 
