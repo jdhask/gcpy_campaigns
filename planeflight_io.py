@@ -1,5 +1,7 @@
 """
-Script to make readable Planelight.dat.YYYYMMDD input files for GEOS-Chem.
+Script to make readable Planelight.dat.YYYYMMDD input files for GEOS-Chem
+and read in outputted planeflight.log files in as pandas dataframes with 
+option to concatenate files. 
 
 Created on Sun Mar 21 14:21:14 2021
 
@@ -7,41 +9,19 @@ Created on Sun Mar 21 14:21:14 2021
 """
 
 import pandas as pd 
+from astropy.io import ascii ass asc # For reading ascii tables (only need if reading in output files!)
 from datetime import datetime
+import utils as ut
 import numpy as np
 import sys
 import os
 
-def _build_species_list_from_input(input_filename: str):
-    """Parse an input.geos file and build a list of advected species."""
-    inputf = open(input_filename, 'r')  # Open the input file.
-    
-    tracers = []  # Make an empty list that will contain advected species.
-    adv_species = False  # Line 1 doesn't contain Adv. Sepcies.
-    count = 0  # Initialize line counting variable.
-
-    while True:  # while not at the end of the file...
-        count += 1  # update line counter
-        line = inputf.readline()  # Read next line from file
-        
-        if 'END OF FILE' in line: break
-        
-        # Next lines will NOT contain species names if in Transport Menu.
-        adv_species = False if 'TRANSPORT MENU' in line else adv_species
-            
-        if adv_species is True:  # Append speices name to list of tracers!
-            if ":" in line:  # don't parse lines that aren't "assignments"
-                tracers=tracers+[(line.strip().split(':')[1]).strip()]
-        
-        # Next lines will contain species names, tell it to expect them!
-        adv_species = True if 'ADVECTED SPECIES MENU' in line else adv_species
-        
-    return tracers
 
 def _get_optional_diags(print_diag_options: bool = False,) :
-    # List of all optional Diagnostic Quantites you can get with Planeflight 
+    """Function to list. get all optional Diagnostic Quantites you can get with Planeflight.""" 
     # grabbed from: http://wiki.seas.harvard.edu/geos-chem/index.php/Planeflight_diagnostic
     # and from inside planeflight_mod.f90
+    
     diag_dict= dict({"RO2": "Concentration of RO2 family", 
                      "AN": "Concentration of AN family", 
                      "NOy": "Concentration of NOy family",
@@ -106,6 +86,7 @@ def _get_optional_diags(print_diag_options: bool = False,) :
             
     return diag_dict
             
+
 def make_planeflightdat_files(outpath: str, 
                            datetimes,
                            lat_arr, 
@@ -114,7 +95,7 @@ def make_planeflightdat_files(outpath: str,
                            alt_arr = [], 
                            tracers: list = [],
                            input_file: str ='',
-                           campaign: str= '',
+                           typestr: str= '',
                            username: str = 'user',
                            overwrite: bool = True,
                            drop_dupes: bool = False,
@@ -130,20 +111,22 @@ def make_planeflightdat_files(outpath: str,
     lat_arr: Array of latitudes where observations take at (degrees N)
     lon_arr: Array of longitudes where observations take at  (degrees N)
     
-# Planeflight can take either alt or pressure. Must specify one. 
+    # Planeflight can take either alt or pressure. Must specify one. 
     pres_arr: Array of pressures in hPa where observations take at 
     alt_arr: Array of altitudes where observations take at  (meters)
     
-# You can tell this function what tracers to sample with planeflight
-# by either passing them as a list or by passing your input file. 
-# That option will use all advected species.Not passing either arg will
-# make a file without any tracers.
+    # You can tell this function what tracers to sample with planeflight
+    # by either passing them as a list or by passing your input file. 
+    # That option will use all advected species.Not passing either arg will
+    # make a file without any tracers.
     input_file: String of path to your GEOS-Chem input file (to read in tracer names).
     tracers: List of tracers you want to sample using planeflight.dat
     
+    
     Optional Arguements:
     -------------------
-    campaign:   String of the "campaign" or the "type" of aircraft obs collected on. This is printed in the file.
+    typestr:   String of the "campaign" or the "type" of aircraft obs collected on. This is printed in the file. 
+                NOTE: TypeStr must NOT begin with "S" unless altitutes passed. Will cause GEOS-Chem erorrs. 
     username:   String of user who created files. Optional. Arg in header of file.
     overwrite:  Boolean of whether to overwrite existing files at outpath with this name or not. 
     drop_dupes: Boolean of whether to drop duplicate rows 
@@ -151,6 +134,7 @@ def make_planeflightdat_files(outpath: str,
                to include ALL available additional diagnositcs. 
     diags_minus: List of diagnostics you don't want to include (e.g. if you use "all").
     print_diag_options: Boolean of whether to print other available diagnostic options.
+    
     
     Output:
     ------
@@ -161,9 +145,18 @@ def make_planeflightdat_files(outpath: str,
     if (len(pres_arr)>0) and (len(alt_arr)>0): 
         sys.exit('Please specify either an altitude or pressure array, not both.'+\
                  'Planeflight.dat converts altitutdes to pressures. ')
-    if len(campaign) > 7: 
+    if len(typestr) > 7: 
         sys.exit('Please change the campaign string used as a type to be'+\
               'less than 7 chars, which is the max allowed by GEOS-Chem.')
+    if typestr[0]=='S': 
+        print('WARNING: GEOS-Chem will assume you are passing the model ' +\
+              'altitude values if you pass a typestr value that beings with ' +\
+              'the letter "S". If you are using pressures as input it is best '+\
+              'to pass as typestr that does not begin with "S" to avoid '+\
+              'the model errorniously converting interpreting your ' + \
+              'pressures as altitudes.')
+        input("Press Enter to continue or Cntrl+C to exit.")
+        
             
     if len(diags)>0: # If the has user asked to include specific diagnostics... 
         # Build the dictionary of optional diagnostics. Print if user asks. 
@@ -180,7 +173,7 @@ def make_planeflightdat_files(outpath: str,
         
     # Make list of all tracers from input file plus the optional diagnostic quantites you want
     if input_file != '': #either by reading the input file 
-        tracer_list= optionals+ _build_species_list_from_input(input_file)
+        tracer_list= optionals+ ut._build_species_list_from_input(input_file)
     else: # or by using the tracesr they gave you. 
         tracer_list= optionals+ tracers
     ntracers=str(int(len(tracer_list))) # count the number of quantities. 
@@ -209,7 +202,7 @@ def make_planeflightdat_files(outpath: str,
         
         points= np.arange(1, len(inds)+1).astype(str)# Values for column "Points"
         obs= np.full(len(inds),9999.000) ## Observation value from the flight campaign
-        typez= np.full(len(inds),'{typ: >6}'.format(typ=campaign)) #type  is allowed 7 chars. 
+        typez= np.full(len(inds),'{typ: >6}'.format(typ=typestr)) #type  is allowed 7 chars. 
         day=   datetimes.dt.strftime('%d-%m-%Y')[inds]  # Day, month, and year (GMT date) for each flight track point
         tms=   datetimes.dt.strftime('%H:%M')[inds]  # Hour and minute (GMT time) for each flight track point
         lats=np.around( lat_arr[inds], decimals=2) # Latitude (-90 to 90 degrees) for each flight track point
@@ -217,7 +210,7 @@ def make_planeflightdat_files(outpath: str,
         
         # Decide what array to use as vertical coordinate 
         if len(pres_arr)> 0: # Pressure in hPa for each flight track point.
-            if i==1: print('Using PRESSURE, not altitude.')
+            if i==0: print('Using PRESSURE, not altitude.')
             pres= np.around( pres_arr[inds], decimals=2) #GC doesn't allow more than 2 decimals
             vert_header='PRESS '  # String for header
             vert_arr=pres # Set the vertical array to pressure
@@ -325,3 +318,96 @@ def make_planeflightdat_files(outpath: str,
         os.remove(outpath+filename+'_0') # And delete the temp file. 
 
         print('Output saved at: '+ outpath + filename) # tell where output is saved.
+    
+    return
+
+
+def read_planelog(filename: str):
+    """Function to read a single planelog ouput files into a pandas dataframe."""
+    try: 
+        # If the header isn't too long it can be read in like this 
+        # (e.g. if you're not saving too many things from GEOS-Chem!)
+        df= asc.read(filename, delimiter="\s", guess=False).to_pandas()
+        
+    except: 
+        # Otherwise we need to read "every other line" because the header 
+        # is super weird and splits the data like this. We'll read line 
+        # by line, write the odd lines to a file, even lines to a file, 
+        # read those in, and then contantenate them, and delete temp files. 
+    
+        out1 = open(filename+'_pt1', "w") # File that will jsut contan odd lines 
+        out2 = open(filename+'_pt2', "w") # File that will just contain even lines 
+        
+        count=0
+        fin = open(filename, 'r') # open original file 
+        Lines = fin.readlines()
+        for line in Lines: # read line by line 
+            if (count% 2) == 0:
+                out1.write(line) # write evens 
+            else: 
+               out2.write(line)   # write odds 
+            count=count+1
+             
+        fin.close() # Close all files.       
+        out1.close() 
+        out2.close()   
+                    
+        # Read in columns from odd lines and columns from even liens 
+        df1 = asc.read(filename+'_pt1', delimiter="\s", guess=False).to_pandas()
+        df2 = asc.read(filename+'_pt2', delimiter="\s", guess=False).to_pandas()
+            
+        # Concantenate into a single dataframe 
+        df = pd.concat([df1, df2], axis=1)
+        
+    # Replace NaNs
+    df= df.replace(-1000, np.NaN)
+    
+    # Convert YMDHM to a pandas datetime object
+    df['time']=pd.to_datetime(df.YYYYMMDD.astype(str) +df.HHMM.astype(str), format='%Y%m%d%H%M')
+    
+    # Delete the temp files with even/odd lines of dat 
+    os.remove(filename+'_pt1')
+    os.remove(filename+'_pt2')
+    
+    return df 
+
+
+def planelog_read_and_concat(path_to_dir: str, outdir: str = None,
+                   outfile: str = None):
+    """
+    Concatonate output plane.log files into a single file from a directory.
+    # If you only want to open a single file, try read_planelog().
+    
+    Args
+    ----
+        path_to_dir = String with filepath to folder containing GEOS Chem output 
+                      plane.log files
+    
+        outdir(optional) = # String path to where concatonated file will be saved 
+    
+        outfilename (optional) = string name of output file, no extension needed.
+    """
+    
+    # If outdir not set, then set it to the same as the input file path.
+    outdir = path_to_dir if outdir is None else outdir
+    # If outfilename not set, then set it to be concat_ObsPack.nc
+    outfile = 'planelog_concat' if outfile is None else outfile
+    
+    # Look for all the planelog files in the directory given 
+    file_list = ut._find_files_in_dir(path_to_dir, ['plane.log'])
+    
+    for i in range(0, len(file_list)): # Loop over files, open each. 
+    
+        df_i= read_planelog(file_list[i])
+        df_i['flight']= np.full(len(df_i['time']), i+1) # Label with flight #. 
+        
+        if i==0 : # Begin concatonating all flights: 
+            df_all= df_i 
+        else: 
+            # For all subsequent loops append the new df UNDER the old df
+            df_all = pd.concat([df_all, df_i], ignore_index=True)
+    
+    df_all.to_pickle(outdir+outfile) # Save the concatonated data 
+    print('Concatenated planelog data saved at:  '+ outdir + outfile )
+    
+    return df_all 

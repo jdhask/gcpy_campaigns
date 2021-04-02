@@ -1,16 +1,19 @@
 """
-Script to make readable Obspack input files for GEOS-Chem for planes or ground sites.
+Scripts to make readable Obspack input files for GEOS-Chem for planes or ground sites
+and read output from GEOS-Chem, concatonate files into a single .nc file for easy use.
 
 Created on Sun Feb 14 12:05:25 2021.
 
-@author: Jessica D.Haskins
+@author: Dr. Jessica D.Haskins
 """
 import pandas as pd
 import numpy as np
 import xarray as xr
+import os 
 import datetime
 import glob
 import sys
+import utils as ut
 from shutil import copyfile
 
 def write_obspack_inputs_flights(sitename: str, lat , lon , alt,
@@ -174,9 +177,8 @@ def write_obspack_inputs_flights(sitename: str, lat , lon , alt,
         
     return all_files
     
-    
 
-def write_obsPack_input_ground(sitename: str, lat: int, lon: int, alt: int,
+def write_obspack_inputs_ground(sitename: str, lat: int, lon: int, alt: int,
                                datestart: str, dateend: str, samplefreq: int,
                                sample_stragety: int, outpath: str):
     """Create ObsPack input files for GEOS Chem v13.0.0. for a single gound site.
@@ -383,19 +385,22 @@ def write_obsPack_input_ground(sitename: str, lat: int, lon: int, alt: int,
     return all_files
 
 
-def combine_common_ObsPacks(folder_1: str , folder_2:str , outpath: str, 
+def combine_common_obspack_inputs(folder_1: str , folder_2:str , outpath: str, 
                             copy_not_common : bool = False):
     """Look in two folders for ObsPack Files and combine common date files.
     
-    For example, I want to sample the GEOS-Chem at the SOAS Centerville site and 
-    along the SENEX flight path during June- July of 2013. Some flights took
-    place on the same days as continous ground monitoring. I used the 
-    ground_make_ObsPack_Input_netcdfs() function to make ObsPack files for SOAS 
-    and I used the flight_make_ObsPack_Input_netcdfs() function. You could 
-    seperate the output by either using the lat/lon of the ground site 
+    This function is usefule if you want to sample the model on the same date 
+    at both a ground site and flight based path. For example, maybe  I want to 
+    sample the GEOS-Chem at the SOAS Centerville site and along the SENEX 
+    flight path during June- July of 2013. Some flights took place on the 
+    same days as continous ground monitoring. I used the  
+    write_obsPack_inputs_ground() function to make ObsPack files for SOAS 
+    and I used the write_obspack_inputs_flights() function for SENEX, and then
+    this function to combine the files for the same dates (in time order). 
+    
+    You could seperate the output by either using the lat/lon of the ground site 
     or probably, easier, by filtering by the obspack_ID string (which is unique
     for those from SOAS vs those from SENEX.)
-    
     
     Args: 
     ----
@@ -482,3 +487,69 @@ def combine_common_ObsPacks(folder_1: str , folder_2:str , outpath: str,
         print('Uncommon files copied over to: ', outpath)
                 
     return common
+
+
+def _switch_obs_2_time_dim(ds):
+    """Function to create a single time variable that is the midpoint of the 
+    ObsPack averaging interval, and make it the xarray coordinate. """ 
+    # Get the midpoint of the average pulled from the model:
+    midpoint = pd.to_datetime(ds.averaging_interval_start.data) + \
+        np.asarray(ds.averaging_interval.data) / 2
+    
+    # Make it the time midpoint a new variable in the dataset.
+    t = midpoint.to_series().reset_index(drop=True)
+    ds['time'] = ("obs", t)
+    
+    # Tell xarray that we want time to be a coordinate.
+    ds = ds.set_coords('time')
+    
+    # And tell it to replace Obs # with time as the preferred dimension.
+    ds = ds.swap_dims({"obs": "time"})
+    
+    return ds
+
+    
+def read_and_concat_output_files(path_to_dir: str, outdir: str = None,
+                   outfile: str = None):
+    """
+    Concatonate output ObsPack files into a single file from a directory.
+    # If you only want to open a single file, try xarray.open_dataset().
+    
+    Args
+    ----
+        path_to_dir = String with filepath to folder containing GEOS Chem output 
+                      Obspack netcdf files
+    
+        outdir(optional) = # String path to where concatonated file will be saved 
+    
+        outfilename (optional) = string name of output file, no extension needed.
+    """
+    # If outdir not set, then set it to the same as the input file path.
+    outdir = path_to_dir if outdir is None else outdir
+    
+    # If outfilename not set, then set it to be concat_ObsPack.nc
+    outfile = 'concat_ObsPack' if outfile is None else outfile
+    
+    # Get a list of variables that GCPy should not read.
+    # These are mostly variables introduced into GCHP with the MAPL v1.0.0
+    # update.  These variables contain either repeated or non-standard
+    # dimensions that can cause problems in xarray when combining datasets.
+    skip_vars = ["anchor","ncontact","orientation","contacts","cubed_sphere"]
+    
+    # Look for all the ObsPack netCDF files in the path
+    file_list = ut._find_files_in_dir(path_to_dir, ['ObsPack', '.nc4'])
+    
+    # Return a single xarray Dataset containing data from all files
+    # Specify a pre-processing function that makes time midpoint the coordinate.
+    ds = xr.open_mfdataset(file_list, drop_variables=skip_vars,
+                                 preprocess=_switch_obs_2_time_dim)
+
+    # Specify the path and filename for the concatenated data
+    out = os.path.join(outdir, outfile+'.nc')
+    
+    # Write concatenated data to a netCDF file
+    ds.to_netcdf(out)
+    
+    print('File saved to:' + out)
+    
+    return out 
