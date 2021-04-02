@@ -45,7 +45,7 @@ plt.show()
 # =============================================================================  
 
 #  OPTION 1: Read in a single plane.log files as a pandas dataframe, 
-pdat= pln.read_planelogs(filepath+'/plane.log.20130603') # open planelog file
+pdat= pln.read_planelog(filepath+'/plane.log.20130603') # open planelog file
 
 ############################################################################
 #  OPTION 2: Read in several plane.log files as a pandas dataframe, 
