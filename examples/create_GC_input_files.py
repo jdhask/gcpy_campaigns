@@ -107,11 +107,13 @@ sn=xr.open_dataset(senex)
 # Make sure my alt, lat, lon, time data is formatted correctly: 
 alt = sn.GpsAlt.values # Pull alt from ds
 alt[alt < 0] = np.NaN  # Don't allow negatives. 
+
 # Create smaller xarray with ONLY the data we need, drop any NaNs from it! 
 sen =  xr.Dataset({'alt':xr.DataArray( data= alt , dims=['obs']), 
                       'lat':xr.DataArray( data= sn.GpsLat.values , dims=['obs']),
                       'lon':xr.DataArray( data= sn.GpsLon.values , dims=['obs']),
                       'time':xr.DataArray( data= sn.time.values , dims=['obs'])}).dropna(dim='obs')
+
 # Get time to not be an index and not be weird. 
 time= pd.to_datetime(sen.time.values).to_series().reset_index(drop=True)
 
