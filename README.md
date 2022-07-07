@@ -22,5 +22,5 @@ Similarly, functions in planeflight_io.py allow you to create Planeflight.dat in
 * `xarray`: http://xarray.pydata.org/en/stable/
 
 
-## Exampless:
+## Examples:
 Examples are provided in the subfolder for making input files for various campaigns as well as examples of how to read in data using this library. 
