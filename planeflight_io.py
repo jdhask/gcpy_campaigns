@@ -9,9 +9,9 @@ Created on Sun Mar 21 14:21:14 2021
 """
 
 import pandas as pd 
-from astropy.io import ascii ass asc # For reading ascii tables (only need if reading in output files!)
+from astropy.io import ascii as asc # For reading ascii tables (only need if reading in output files!)
 from datetime import datetime
-import utils as ut
+import campaign_utils as ut
 import numpy as np
 import sys
 import os
@@ -148,14 +148,6 @@ def make_planeflightdat_files(outpath: str,
     if len(typestr) > 7: 
         sys.exit('Please change the campaign string used as a type to be'+\
               'less than 7 chars, which is the max allowed by GEOS-Chem.')
-    if typestr[0]=='S': 
-        print('WARNING: GEOS-Chem will assume you are passing the model ' +\
-              'altitude values if you pass a typestr value that beings with ' +\
-              'the letter "S". If you are using pressures as input it is best '+\
-              'to pass as typestr that does not begin with "S" to avoid '+\
-              'the model errorniously converting interpreting your ' + \
-              'pressures as altitudes.')
-        input("Press Enter to continue or Cntrl+C to exit.")
         
             
     if len(diags)>0: # If the has user asked to include specific diagnostics... 
@@ -328,14 +320,15 @@ def read_planelog(filename: str):
         # If the header isn't too long it can be read in like this 
         # (e.g. if you're not saving too many things from GEOS-Chem!)
         df= asc.read(filename, delimiter="\s", guess=False).to_pandas()
-        
+        split_files=False
     except: 
         # Otherwise we need to read "every other line" because the header 
         # is super weird and splits the data like this. We'll read line 
         # by line, write the odd lines to a file, even lines to a file, 
         # read those in, and then contantenate them, and delete temp files. 
-    
-        out1 = open(filename+'_pt1', "w") # File that will jsut contan odd lines 
+        
+        split_files=True
+        out1 = open(filename+'_pt1', "w") # File that will just contain odd lines 
         out2 = open(filename+'_pt2', "w") # File that will just contain even lines 
         
         count=0
@@ -361,19 +354,22 @@ def read_planelog(filename: str):
         
     # Replace NaNs
     df= df.replace(-1000, np.NaN)
-    
+
     # Convert YMDHM to a pandas datetime object
-    df['time']=pd.to_datetime(df.YYYYMMDD.astype(str) +df.HHMM.astype(str), format='%Y%m%d%H%M')
+    date_str= [str(df.loc[b,'YYYYMMDD'])+str(df.loc[b,'HHMM']).zfill(4) for b in list(df.index)]
+
+    df['time']=pd.to_datetime(date_str, format='%Y%m%d%H%M')
     
     # Delete the temp files with even/odd lines of dat 
-    os.remove(filename+'_pt1')
-    os.remove(filename+'_pt2')
+    if split_files is True: 
+        os.remove(filename+'_pt1')
+        os.remove(filename+'_pt2')
     
     return df 
 
 
 def planelog_read_and_concat(path_to_dir: str, outdir: str = None,
-                   outfile: str = None):
+                   outfile: str = None,convert2_molmol: bool = False ):
     """
     Concatonate output plane.log files into a single file from a directory.
     # If you only want to open a single file, try read_planelog().
@@ -386,6 +382,9 @@ def planelog_read_and_concat(path_to_dir: str, outdir: str = None,
         outdir(optional) = # String path to where concatonated file will be saved 
     
         outfilename (optional) = string name of output file, no extension needed.
+        
+        convert2molmol (optional) = Boolean of whether you'd like to convert the 
+            concatenated ouput to mol/mol units instead of molec cm-3 (only if used TRACER NAMES!) 
     """
     
     # If outdir not set, then set it to the same as the input file path.
@@ -407,7 +406,40 @@ def planelog_read_and_concat(path_to_dir: str, outdir: str = None,
             # For all subsequent loops append the new df UNDER the old df
             df_all = pd.concat([df_all, df_i], ignore_index=True)
     
-    df_all.to_pickle(outdir+outfile) # Save the concatonated data 
-    print('Concatenated planelog data saved at:  '+ outdir + outfile )
+    x_arr= df_all.to_xarray() # Save the concatonated data as nc4. 
+        
+    # Tell xarray that we want time to be a coordinate.
+    x_arr = x_arr.set_coords('time')
+    # And tell it to replace index # with time as the preferred dimension.
+    x_arr = x_arr.swap_dims({"index": "time"})
+    # And now drop the old coordinate index.
+    x_arr= x_arr.reset_coords('index', drop=True)
     
-    return df_all 
+    if convert2_molmol is True: x_arr=convert_moleccm3_to_mr(x_arr)
+    
+    fname= outdir + outfile +'.nc4'    
+    x_arr.to_netcdf(fname) # And save it as a netcdf file. 
+
+    print('Concatenated planelog data saved at:  '+ fname )
+
+    return  fname
+
+
+def convert_moleccm3_to_mr(ds): 
+    # Planeflight outputs are in molec cm-3 if you use tracer names in your input files 
+    # rather than tracer numbers, so we need to convert them to get the back into mol mol-1.  
+    
+    # n= PV/ RT in mols at STP. 
+    nmols=((ds.GMAO_PRES.values*100)*1e-6)/(8.314462*ds.GMAO_TEMP.values) 
+    unit_error_conversion=  1/(nmols*6.022e23)
+    ignore= ['POINT', 'TYPE', 'YYYYMMDD', 'HHMM', 'LAT', 'LON', 'PRESS', 'OBS', 
+          'T-IND', 'P-I', 'I-IND', 'J-IND', 'RO2', 'AN', 'NOy', 'GMAO_TEMP', 
+          'GMAO_ABSH', 'GMAO_SURF', 'GMAO_PSFC', 'GMAO_UWND', 'GMAO_VWND', 
+          'GMAO_IIEV', 'GMAO_JJEV', 'GMAO_LLEV', 'GMAO_RELH', 'GMAO_PSLV', 
+          'GMAO_AVGW', 'GMAO_THTA', 'GMAO_PRES', 'ISOR_HPLUS', 'ISOR_PH', 
+          'ISOR_AH2O', 'ISOR_HSO4', 'TIME_LT', 'AQAER_RAD', 'AQAER_SURF','flight'] 
+    for item in list(ds.data_vars):
+        if item not in ignore: 
+            ds[item].values=ds[item].values*unit_error_conversion
+        
+    return ds
