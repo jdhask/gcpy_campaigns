@@ -113,7 +113,7 @@ def make_planeflightdat_files(outpath: str,
     
     # Planeflight can take either alt or pressure. Must specify one. 
     pres_arr: Array of pressures in hPa where observations take at 
-    alt_arr: Array of altitudes where observations take at  (meters) (elevation above sea level) 
+    alt_arr: Array of altitudes where observations take at  (meters)
     
     # You can tell this function what tracers to sample with planeflight
     # by either passing them as a list or by passing your input file. 
