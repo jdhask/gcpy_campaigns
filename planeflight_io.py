@@ -429,8 +429,11 @@ def convert_moleccm3_to_mr(ds):
     # Planeflight outputs are in molec cm-3 if you use tracer names in your input files 
     # rather than tracer numbers, so we need to convert them to get the back into mol mol-1.  
     
+    if 'GMAO_PRES' in ds.data_vars: pres='GMAO_PRES'
+    else: print('Error: GMAO_PRES not found in your output to convert molec cm-3 to mol mol-1!')
+
     # n= PV/ RT in mols at STP. 
-    nmols=((ds.GMAO_PRES.values*100)*1e-6)/(8.314462*ds.GMAO_TEMP.values) 
+    nmols=((ds[pres].values*100)*1e-6)/(8.314462*ds.GMAO_TEMP.values) 
     unit_error_conversion=  1/(nmols*6.022e23)
     ignore= ['POINT', 'TYPE', 'YYYYMMDD', 'HHMM', 'LAT', 'LON', 'PRESS', 'OBS', 
           'T-IND', 'P-I', 'I-IND', 'J-IND', 'RO2', 'AN', 'NOy', 'GMAO_TEMP', 

@@ -86,7 +86,7 @@ def write_obspack_inputs_flights(sitename, lat , lon , alt,
 
     # Make sure it stores times as integers and not datetime64[ns] objects .. 
     dts=np.array([np.int32(val.split('.0')[0]) for val in dts0],dtype=int)
-        
+
     # Check to make sure the user passed values for lat/ long/ alt / time are valid. 
     if (any(abs(lat)> 90)) or (np.isfinite(lat).any()  ==False or (any(np.isnan(lat))==True)):
         sys.exit('Latitudes passed are either > 90 or contain non -Finite values')
@@ -98,44 +98,35 @@ def write_obspack_inputs_flights(sitename, lat , lon , alt,
         print(dts[np.isnan(dts)])
         sys.exit('Times passed contain non -Finite values')
         
-    # Create unique obspack array of ID strings:
-    n = np.arange(0, len(date_only)).astype(str)  # Create a uniq obs #, same len as time
-    prefix = ['_at_' + date_only.min()+ '_to_' + date_only.max()+ '_n' for s in range(0,len(dts))]
-    ids= np.array([(prefix + stri) for stri in n]).astype('|S200') # Make IDs- same len as time
-    
-    sitepref=[sitename]*len(lat) if type(sitename)==str else sitename
-        
+    # Create unique obspack array of ID strings: 
+    n = np.arange(0, len(date_only)).astype(str)  # Create a uniq obs #, same len as time 
+    ids= np.array([(sitename+ str(stri)) for stri in n]).astype('|S200') # Make IDs- same len as time
+ 
     # ==================   Begin making Indv Files:  ==========================
     all_files = list()  # empty list to contain netcdf filenames generated.
     
     # Loop over each day you need an ObsPack File for. Grab time, lat lon, alt, ids, 
     # only on this date. Create the xarray and then save the .nc file. 
-    last=1; 
     for i in range(0, len(indv_days)): 
         # Get index of obs points on this day from larger arrays. 
         inds= np.where(date_only == indv_days[i])[0] 
         
         # Actual data you're putting inside the NetCDF file. 
         these_times= dts[inds].astype(int)
-        these_ids0= ids[inds]
+        these_ids=  ids[inds]
 
         # If all are same length then great, just use the index selected from time. 
-        if all(len(v)==len(dts) for v in [lat, lon, alt, ids]):
+        if all([len(v)==len(dts) for v in [lat, lon, alt]]):
             these_lats= lat[inds].astype(np.float32)
             these_lons= lon[inds].astype(np.float32)
             these_alts= alt[inds].astype(np.float32)
-            for site in sitepref: 
-                si
         else: 
             # If lat/long/alt not same len as time, then, assume you'll sample 
             # all these sites at each point in time. 
             these_lats=lat.astype(np.float32)
             these_lons=lon.astype(np.float32)
             these_alts=alt.astype(np.float32)
-        
-        # Sample
-        #for n in range(0,len(inds)):
-            
+
         # ====================================================================
         # =========    Make Big XArray with everything required.      ========
         # ====================================================================
