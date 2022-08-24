@@ -138,7 +138,7 @@ def write_obspack_inputs_flights(sitename, lat , lon , alt,
                 data= np.arange(1, len(these_times)+1).astype(int) ,
                 dims=['obs'],
                 attrs={
-                    "long_name": "Sample latitude",
+                    "long_name": "obs",
                     "_Storage":"chunked",
                     "_ChunkSizes": 1024,
                     "_Endianness":"little",
